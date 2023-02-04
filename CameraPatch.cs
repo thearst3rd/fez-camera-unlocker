@@ -26,7 +26,7 @@ namespace FezCameraUnlocker
 		[ServiceDependency]
 		public IInputManager InputManager { private get; set; }
 
-		public bool freeCameraEnabled = false;
+		public bool freeCameraEnabled = true;
 
 		public CameraPatch(Game game) : base(game)
 		{
