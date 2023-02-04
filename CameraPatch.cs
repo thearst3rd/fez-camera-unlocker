@@ -1,5 +1,6 @@
 ﻿using Common;
 using FezEngine.Components;
+using FezEngine.Structure.Input;
 using FezEngine.Tools;
 using FezGame.Components;
 using FezGame.Services;
@@ -17,13 +18,13 @@ namespace FezCameraUnlocker
 		private static IDetour PlayerCameraControlUpdateDetour;
 
 		[ServiceDependency]
-		public IGameCameraManager CameraManager;
+		public IGameCameraManager CameraManager { private get; set; }
 
 		[ServiceDependency]
-		public IGameStateManager GameState;
+		public IGameStateManager GameState { private get; set; }
 
 		[ServiceDependency]
-		public IInputManager InputManager;
+		public IInputManager InputManager { private get; set; }
 
 		public bool freeCameraEnabled = false;
 
@@ -33,6 +34,8 @@ namespace FezCameraUnlocker
 
 		public override void Initialize()
 		{
+			base.Initialize();
+			ServiceHelper.InjectServices(this);
 			PlayerCameraControlUpdateDetour = new Hook(
 				typeof(PlayerCameraControl).GetMethod("Update"),
 				(Action<Action<PlayerCameraControl, GameTime>, PlayerCameraControl, GameTime>)UpdateHooked);
@@ -40,15 +43,14 @@ namespace FezCameraUnlocker
 
 		private void UpdateHooked(Action<PlayerCameraControl, GameTime> original, PlayerCameraControl playerCameraControl, GameTime gameTime)
 		{
-			//if (InputManager.ClampLook == FezEngine.Structure.Input.FezButtonState.Pressed)
-			//	freeCameraEnabled = !freeCameraEnabled;
+			if (InputManager.ClampLook == FezButtonState.Pressed)
+				freeCameraEnabled = !freeCameraEnabled;
 
 			Vector2 freeLook = Vector2.Zero;
 			if (freeCameraEnabled)
 			{
 				freeLook = InputManager.FreeLook;
-				Vector2 reflectedFreeLook = (Vector2)InputManager.GetType().GetField("FreeLook").GetValue(InputManager);
-				InputManager.GetType().GetField("FreeLook").SetValue(InputManager, Vector2.Zero);
+				InputManager.GetType().GetProperty("FreeLook").SetValue(InputManager, Vector2.Zero);
 			}
 
 			original(playerCameraControl, gameTime);
@@ -57,9 +59,16 @@ namespace FezCameraUnlocker
 			{
 				if (freeLook.Length() > 0f)
 				{
-					Vector3 value = Vector3.Transform(CameraManager.Direction, Quaternion.CreateFromAxisAngle(CameraManager.InverseView.Right, InputManager.FreeLook.Y * 0.4f));
-					value = Vector3.Transform(value, Quaternion.CreateFromAxisAngle(CameraManager.InverseView.Up, (0f - InputManager.FreeLook.X) * 0.5f));
-
+					Vector3 newDirection = Vector3.Transform(CameraManager.Direction, Quaternion.CreateFromAxisAngle(CameraManager.InverseView.Right, freeLook.Y * 0.1f));
+					if (newDirection.Y > 0.7 || newDirection.Y < -0.7)
+					{
+						float damping = 0.7f / new Vector2(newDirection.X, newDirection.Z).Length();
+						newDirection = new Vector3(newDirection.X * damping, 0.7f * Math.Sign(newDirection.Y), newDirection.Z * damping);
+					}
+					newDirection = Vector3.Transform(newDirection, Quaternion.CreateFromAxisAngle(CameraManager.InverseView.Up, freeLook.X * -0.1f));
+					CameraManager.Direction = newDirection;
+					if (CameraManager.Direction.Y < -0.625f)
+						CameraManager.Direction = new Vector3(CameraManager.Direction.X, -0.625f, CameraManager.Direction.Z);
 				}
 			}
 		}
